@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Kamera — Minimal Fullscreen</title>
+<meta name="color-scheme" content="light dark" />
+<style>
+  :root{
+    --accent:#0a84ff;
+    --ui:#ffffffdd;
+    --bg:#000;
+    --shadow: 0 12px 30px rgba(0,0,0,.3);
+    --radius: 22px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:#fff; font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui;
+  }
+
+  /* ===== STAGE (video fullscreen) ===== */
+  .stage{
+    position:fixed; inset:0; overflow:hidden; background:#000;
+  }
+  video{
+    position:absolute; inset:0; margin:auto;
+    width:100%; height:100%; object-fit:cover; background:#000;
+    transform:translateZ(0);
+  }
+
+  /* ===== TOP BAR ===== */
+  .topbar{
+    position:fixed; top:0; left:0; right:0;
+    display:flex; align-items:center; justify-content:center;
+    padding: env(safe-area-inset-top) 16px 8px;
+    background: linear-gradient(180deg, rgba(0,0,0,.45), rgba(0,0,0,0));
+    pointer-events:none;
+  }
+  .title{
+    pointer-events:auto;
+    padding:8px 14px; border-radius:999px;
+    backdrop-filter: blur(10px);
+    background:rgba(0,0,0,.35);
+    font-weight:600; letter-spacing:.25px;
+  }
+
+  /* ===== BOTTOM CONTROLS ===== */
+  .controls{
+    position:fixed; left:0; right:0; bottom:0;
+    padding: 16px 18px calc(20px + env(safe-area-inset-bottom));
+    display:grid; gap:14px; justify-items:center;
+    background: linear-gradient(0deg, rgba(0,0,0,.50), rgba(0,0,0,0));
+  }
+  .hint{
+    font-size:13px; opacity:.8; text-align:center;
+    padding:6px 10px; border-radius:12px; background:rgba(0,0,0,.25); backdrop-filter: blur(8px);
+  }
+
+  /* Capture button */
+  .capture{
+    position:relative; width:84px; height:84px; border-radius:50%;
+    display:grid; place-items:center; cursor:pointer; border:none; background:transparent;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ring{
+    position:absolute; inset:0; border-radius:inherit;
+    background: radial-gradient(closest-side,#fff 72%, #ffffff80 73%, transparent 76%);
+    box-shadow: var(--shadow);
+    transition: transform .08s ease;
+  }
+  .core{
+    width:64px; height:64px; border-radius:50%; background:#fff; transition: transform .08s ease, background .2s ease;
+  }
+  .capture:active .core{ transform: scale(.95); }
+  .capture:active .ring{ transform: scale(.98); }
+
+  /* ===== PREVIEW OVERLAY ===== */
+  .overlay{
+    position:fixed; inset:0; display:none; place-items:center;
+    background:rgba(0,0,0,.6); backdrop-filter: blur(8px);
+    animation: fadeIn .2s ease both;
+  }
+  .sheet{
+    width:min(94vw, 480px);
+    border-radius: var(--radius);
+    background: #111a; backdrop-filter: blur(18px);
+    box-shadow: var(--shadow);
+    overflow:hidden;
+  }
+  .shot{
+    width:100%; display:block; max-height:60vh; object-fit:contain; background:#000;
+  }
+  .actions{
+    display:flex; gap:10px; padding:12px; justify-content:center; flex-wrap:wrap; background:rgba(0,0,0,.25);
+  }
+  .btn{
+    border:0; border-radius:14px; padding:10px 14px; font-weight:600; cursor:pointer;
+    color:#fff; background: #1f2937; transition: transform .08s ease, opacity .2s ease, filter .2s ease;
+  }
+  .btn:active{ transform: scale(.97); }
+  .primary{ background: var(--accent); }
+  .danger{ background:#ef4444; }
+
+  .closeX{
+    position:absolute; top:12px; right:12px; width:40px; height:40px; border-radius:50%;
+    display:grid; place-items:center; background:#0009; color:#fff; border:1px solid #ffffff22; cursor:pointer;
+  }
+
+  /* flash effect */
+  .flash{
+    position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:9;
+    transition:opacity .12s ease;
+  }
+  .flash.show{ opacity:1; transition:opacity .06s ease; }
+
+  /* file input fallback button */
+  .fallback{
+    position:fixed; left:12px; bottom:12px; z-index:3;
+    background:#0009; color:#fff; border:1px solid #ffffff22; border-radius:12px; padding:8px 12px; font-size:13px;
+  }
+  .fallback input{ display:none; }
+
+  @keyframes fadeIn{ from { opacity:0; } to { opacity:1; } }
+</style>
+</head>
+<body>
+
+  <!-- CAMERA STAGE -->
+  <div class="stage" aria-label="Kamera sahnasi">
+    <video id="video" autoplay playsinline muted></video>
+  </div>
+
+  <!-- TOP TITLE -->
+  <div class="topbar">
+    <div class="title">Kamera</div>
+  </div>
+
+  <!-- FLASH -->
+  <div id="flash" class="flash" aria-hidden="true"></div>
+
+  <!-- CONTROLS -->
+  <div class="controls" role="group" aria-label="Kamera boshqaruvlari">
+    <div id="hint" class="hint">Tugmani bosing — brauzer kamera ruxsatini so‘raydi, so‘ng surat olinadi.</div>
+    <button id="capture" class="capture" aria-label="Rasmga olish">
+      <span class="ring" aria-hidden="true"></span>
+      <span class="core" aria-hidden="true"></span>
+    </button>
+  </div>
+
+  <!-- PREVIEW OVERLAY -->
+  <div id="overlay" class="overlay" aria-modal="true" role="dialog" aria-label="Olingan surat">
+    <div class="sheet">
+      <img id="shot" class="shot" alt="Olingan surat" />
+      <div class="actions">
+        <button id="shareBtn" class="btn">Share</button>
+        <button id="saveBtn" class="btn primary">Download</button>
+        <button id="retakeBtn" class="btn danger">Retake</button>
+      </div>
+    </div>
+    <button id="closeX" class="closeX" aria-label="Yopish">✕</button>
+  </div>
+
+  <!-- Fallback: pick from camera app if getUserMedia fails -->
+  <label class="fallback">Fallback: Fayldan olish
+    <input id="fileInput" type="file" accept="image/*" capture="user">
+  </label>
+
+<script>
+(() => {
+  const video = document.getElementById('video');
+  const captureBtn = document.getElementById('capture');
+  const overlay = document.getElementById('overlay');
+  const flash = document.getElementById('flash');
+  const shotImg = document.getElementById('shot');
+  const shareBtn = document.getElementById('shareBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const closeX = document.getElementById('closeX');
+  const hint = document.getElementById('hint');
+  const fileInput = document.getElementById('fileInput');
+
+  let stream = null;
+  let lastBlob = null;
+  let lastURL  = null;
+
+  function setHint(text){ hint.textContent = text; }
+  function flashOnce(){ flash.classList.add('show'); setTimeout(()=>flash.classList.remove('show'), 90); }
+  function revokeURL(){ if(lastURL){ URL.revokeObjectURL(lastURL); lastURL=null; } }
+
+  async function ensureCamera(){
+    if (stream) return;
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'user' }, width:{ideal:1280}, height:{ideal:720} },
+      audio: false
+    });
+    video.srcObject = stream;
+    await new Promise((res,rej)=>{
+      if (video.readyState >= 2) return res();
+      const t = setTimeout(()=>rej(new Error('Video yuklanmadi')), 8000);
+      video.addEventListener('canplay', ()=>{ clearTimeout(t); res(); }, { once:true });
+    });
+  }
+
+  async function takeShot(){
+    try{
+      await ensureCamera(); // This click triggers the permission prompt
+      flashOnce();
+
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, w, h);
+
+      lastBlob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
+      revokeURL();
+      lastURL = URL.createObjectURL(lastBlob);
+      shotImg.src = lastURL;
+
+      overlay.style.display = 'grid';
+      setHint('Surat olindi. Share yoki Download tanlang.');
+    }catch(err){
+      console.error(err);
+      setHint('Kamera ruxsati rad etildi yoki xato: ' + (err?.message || err));
+    }
+  }
+
+  function downloadBlob(){
+    if(!lastBlob) return;
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(lastBlob);
+    a.href = url;
+    a.download = `photo_${Date.now()}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function shareBlob(){
+    if(!lastBlob) return;
+    const file = new File([lastBlob], `photo_${Date.now()}.jpg`, { type:'image/jpeg' });
+    try{
+      if(navigator.canShare && navigator.canShare({ files:[file] })){
+        await navigator.share({ files:[file], title: 'Surat' });
+      }else{
+        const u = URL.createObjectURL(lastBlob);
+        window.open(u, '_blank', 'noopener,noreferrer');
+      }
+    }catch(e){
+      /* user cancelled or unsupported */
+    }
+  }
+
+  function retake(){
+    overlay.style.display = 'none';
+    setHint('Qayta rasmga oling.');
+  }
+
+  // Events
+  captureBtn.addEventListener('click', takeShot);
+  saveBtn.addEventListener('click', downloadBlob);
+  shareBtn.addEventListener('click', shareBlob);
+  retakeBtn.addEventListener('click', retake);
+  closeX.addEventListener('click', retake);
+
+  // Fallback: file select
+  fileInput.addEventListener('change', e=>{
+    const f = e.target.files?.[0];
+    if(!f) return;
+    lastBlob = f;
+    revokeURL();
+    lastURL = URL.createObjectURL(f);
+    shotImg.src = lastURL;
+    overlay.style.display = 'grid';
+    setHint('Fayldan surat tanlandi.');
+  });
+
+  // Cleanup camera when leaving
+  window.addEventListener('beforeunload', ()=>{
+    try { stream?.getTracks().forEach(t=>t.stop()); } catch {}
+    revokeURL();
+  });
+})();
+</script>
+</body>
+</html>
