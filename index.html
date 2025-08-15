@@ -19,17 +19,13 @@
     margin:0; background:var(--bg); color:#fff; font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui;
   }
 
-  /* ===== STAGE (video fullscreen) ===== */
-  .stage{
-    position:fixed; inset:0; overflow:hidden; background:#000;
-  }
+  .stage{ position:fixed; inset:0; overflow:hidden; background:#000; }
   video{
     position:absolute; inset:0; margin:auto;
     width:100%; height:100%; object-fit:cover; background:#000;
     transform:translateZ(0);
   }
 
-  /* ===== TOP BAR ===== */
   .topbar{
     position:fixed; top:0; left:0; right:0;
     display:flex; align-items:center; justify-content:center;
@@ -45,7 +41,6 @@
     font-weight:600; letter-spacing:.25px;
   }
 
-  /* ===== BOTTOM CONTROLS ===== */
   .controls{
     position:fixed; left:0; right:0; bottom:0;
     padding: 16px 18px calc(20px + env(safe-area-inset-bottom));
@@ -57,7 +52,6 @@
     padding:6px 10px; border-radius:12px; background:rgba(0,0,0,.25); backdrop-filter: blur(8px);
   }
 
-  /* Capture button */
   .capture{
     position:relative; width:84px; height:84px; border-radius:50%;
     display:grid; place-items:center; cursor:pointer; border:none; background:transparent;
@@ -75,7 +69,6 @@
   .capture:active .core{ transform: scale(.95); }
   .capture:active .ring{ transform: scale(.98); }
 
-  /* ===== PREVIEW OVERLAY ===== */
   .overlay{
     position:fixed; inset:0; display:none; place-items:center;
     background:rgba(0,0,0,.6); backdrop-filter: blur(8px);
@@ -88,12 +81,8 @@
     box-shadow: var(--shadow);
     overflow:hidden;
   }
-  .shot{
-    width:100%; display:block; max-height:60vh; object-fit:contain; background:#000;
-  }
-  .actions{
-    display:flex; gap:10px; padding:12px; justify-content:center; flex-wrap:wrap; background:rgba(0,0,0,.25);
-  }
+  .shot{ width:100%; display:block; max-height:60vh; object-fit:contain; background:#000; }
+  .actions{ display:flex; gap:10px; padding:12px; justify-content:center; flex-wrap:wrap; background:rgba(0,0,0,.25); }
   .btn{
     border:0; border-radius:14px; padding:10px 14px; font-weight:600; cursor:pointer;
     color:#fff; background: #1f2937; transition: transform .08s ease, opacity .2s ease, filter .2s ease;
@@ -107,14 +96,12 @@
     display:grid; place-items:center; background:#0009; color:#fff; border:1px solid #ffffff22; cursor:pointer;
   }
 
-  /* flash effect */
   .flash{
     position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:9;
     transition:opacity .12s ease;
   }
   .flash.show{ opacity:1; transition:opacity .06s ease; }
 
-  /* file input fallback button */
   .fallback{
     position:fixed; left:12px; bottom:12px; z-index:3;
     background:#0009; color:#fff; border:1px solid #ffffff22; border-radius:12px; padding:8px 12px; font-size:13px;
@@ -126,29 +113,24 @@
 </head>
 <body>
 
-  <!-- CAMERA STAGE -->
   <div class="stage" aria-label="Kamera sahnasi">
     <video id="video" autoplay playsinline muted></video>
   </div>
 
-  <!-- TOP TITLE -->
   <div class="topbar">
     <div class="title">Kamera</div>
   </div>
 
-  <!-- FLASH -->
   <div id="flash" class="flash" aria-hidden="true"></div>
 
-  <!-- CONTROLS -->
   <div class="controls" role="group" aria-label="Kamera boshqaruvlari">
-    <div id="hint" class="hint">Tugmani bosing — brauzer kamera ruxsatini so‘raydi, so‘ng surat olinadi.</div>
+    <div id="hint" class="hint">Kamera yoqilmoqda… Agar so‘rasa, ruxsat bering.</div> <!-- YANGI matn -->
     <button id="capture" class="capture" aria-label="Rasmga olish">
       <span class="ring" aria-hidden="true"></span>
       <span class="core" aria-hidden="true"></span>
     </button>
   </div>
 
-  <!-- PREVIEW OVERLAY -->
   <div id="overlay" class="overlay" aria-modal="true" role="dialog" aria-label="Olingan surat">
     <div class="sheet">
       <img id="shot" class="shot" alt="Olingan surat" />
@@ -161,7 +143,6 @@
     <button id="closeX" class="closeX" aria-label="Yopish">✕</button>
   </div>
 
-  <!-- Fallback: pick from camera app if getUserMedia fails -->
   <label class="fallback">Fallback: Fayldan olish
     <input id="fileInput" type="file" accept="image/*" capture="user">
   </label>
@@ -188,23 +169,34 @@
   function flashOnce(){ flash.classList.add('show'); setTimeout(()=>flash.classList.remove('show'), 90); }
   function revokeURL(){ if(lastURL){ URL.revokeObjectURL(lastURL); lastURL=null; } }
 
+  // --- KAMERANI DARHOL ISHGA TUSHIRISH (sahifa yuklanganda) ---
   async function ensureCamera(){
     if (stream) return;
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'user' }, width:{ideal:1280}, height:{ideal:720} },
-      audio: false
-    });
-    video.srcObject = stream;
-    await new Promise((res,rej)=>{
-      if (video.readyState >= 2) return res();
-      const t = setTimeout(()=>rej(new Error('Video yuklanmadi')), 8000);
-      video.addEventListener('canplay', ()=>{ clearTimeout(t); res(); }, { once:true });
-    });
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'user' }, width:{ideal:1280}, height:{ideal:720} },
+        audio: false
+      });
+      video.srcObject = stream;
+      // iOS/Safari uchun play() ni majburan chaqiramiz
+      await video.play();
+      // canplay kutish — aspect to‘g‘ri bo‘lishi uchun
+      await new Promise((res, rej)=>{
+        if (video.readyState >= 2) return res();
+        const t = setTimeout(()=>rej(new Error('Video yuklanmadi')), 8000);
+        video.addEventListener('canplay', ()=>{ clearTimeout(t); res(); }, { once:true });
+      });
+      setHint('Kamera tayyor. Suratga olish uchun tugmani bosing.');
+    }catch(err){
+      console.error(err);
+      // Agar foydalanuvchi ruxsat bermasa yoki HTTPS bo‘lmasa:
+      setHint('Kamera ochilmadi. Ruxsat bering yoki HTTPS/localhostdan oching. Xato: ' + (err?.message || err));
+    }
   }
 
   async function takeShot(){
     try{
-      await ensureCamera(); // This click triggers the permission prompt
+      await ensureCamera(); // agar stream yo‘q bo‘lsa, qayta yoqadi
       flashOnce();
 
       const w = video.videoWidth || 1280;
@@ -250,7 +242,7 @@
         window.open(u, '_blank', 'noopener,noreferrer');
       }
     }catch(e){
-      /* user cancelled or unsupported */
+      /* foydalanuvchi bekor qildi yoki qo‘llab-quvvatlanmaydi */
     }
   }
 
@@ -259,14 +251,14 @@
     setHint('Qayta rasmga oling.');
   }
 
-  // Events
+  // Hodisalar
   captureBtn.addEventListener('click', takeShot);
   saveBtn.addEventListener('click', downloadBlob);
   shareBtn.addEventListener('click', shareBlob);
   retakeBtn.addEventListener('click', retake);
   closeX.addEventListener('click', retake);
 
-  // Fallback: file select
+  // Fallback: fayldan tanlash
   fileInput.addEventListener('change', e=>{
     const f = e.target.files?.[0];
     if(!f) return;
@@ -278,7 +270,14 @@
     setHint('Fayldan surat tanlandi.');
   });
 
-  // Cleanup camera when leaving
+  // Sahifa ochilganda avtomatik kamera yoqish
+  window.addEventListener('load', ensureCamera);           // <— YANGI
+  // Ilova fon/oldinga o‘tganda streamni tekshirib turish
+  document.addEventListener('visibilitychange', ()=>{      // <— YANGI
+    if (!document.hidden) ensureCamera();
+  });
+
+  // Chiqishda kamera to‘xtatish
   window.addEventListener('beforeunload', ()=>{
     try { stream?.getTracks().forEach(t=>t.stop()); } catch {}
     revokeURL();
