@@ -23,7 +23,7 @@
   video{
     position:absolute; inset:0; margin:auto;
     width:100%; height:100%; object-fit:cover; background:#000;
-    transform:translateZ(0);
+    transform:scaleX(-1); /* 🔹 Oynadek ko‘rsatish */
   }
 
   .topbar{
@@ -124,7 +124,7 @@
   <div id="flash" class="flash" aria-hidden="true"></div>
 
   <div class="controls" role="group" aria-label="Kamera boshqaruvlari">
-    <div id="hint" class="hint">Kamera yoqilmoqda… Agar so‘rasa, ruxsat bering.</div> <!-- YANGI matn -->
+    <div id="hint" class="hint">Kamera yoqilmoqda… Agar so‘rasa, ruxsat bering.</div>
     <button id="capture" class="capture" aria-label="Rasmga olish">
       <span class="ring" aria-hidden="true"></span>
       <span class="core" aria-hidden="true"></span>
@@ -169,7 +169,6 @@
   function flashOnce(){ flash.classList.add('show'); setTimeout(()=>flash.classList.remove('show'), 90); }
   function revokeURL(){ if(lastURL){ URL.revokeObjectURL(lastURL); lastURL=null; } }
 
-  // --- KAMERANI DARHOL ISHGA TUSHIRISH (sahifa yuklanganda) ---
   async function ensureCamera(){
     if (stream) return;
     try{
@@ -178,9 +177,7 @@
         audio: false
       });
       video.srcObject = stream;
-      // iOS/Safari uchun play() ni majburan chaqiramiz
       await video.play();
-      // canplay kutish — aspect to‘g‘ri bo‘lishi uchun
       await new Promise((res, rej)=>{
         if (video.readyState >= 2) return res();
         const t = setTimeout(()=>rej(new Error('Video yuklanmadi')), 8000);
@@ -189,14 +186,13 @@
       setHint('Kamera tayyor. Suratga olish uchun tugmani bosing.');
     }catch(err){
       console.error(err);
-      // Agar foydalanuvchi ruxsat bermasa yoki HTTPS bo‘lmasa:
-      setHint('Kamera ochilmadi. Ruxsat bering yoki HTTPS/localhostdan oching. Xato: ' + (err?.message || err));
+      setHint('Kamera ochilmadi: ' + (err?.message || err));
     }
   }
 
   async function takeShot(){
     try{
-      await ensureCamera(); // agar stream yo‘q bo‘lsa, qayta yoqadi
+      await ensureCamera();
       flashOnce();
 
       const w = video.videoWidth || 1280;
@@ -204,6 +200,10 @@
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       const ctx = canvas.getContext('2d');
+
+      // 🔹 Tasvirni chap/o‘ng tomoni joyida bo‘lishi uchun flipni bekor qilamiz
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, w, h);
 
       lastBlob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
@@ -215,7 +215,7 @@
       setHint('Surat olindi. Share yoki Download tanlang.');
     }catch(err){
       console.error(err);
-      setHint('Kamera ruxsati rad etildi yoki xato: ' + (err?.message || err));
+      setHint('Xato: ' + (err?.message || err));
     }
   }
 
@@ -241,9 +241,7 @@
         const u = URL.createObjectURL(lastBlob);
         window.open(u, '_blank', 'noopener,noreferrer');
       }
-    }catch(e){
-      /* foydalanuvchi bekor qildi yoki qo‘llab-quvvatlanmaydi */
-    }
+    }catch(e){}
   }
 
   function retake(){
@@ -251,14 +249,12 @@
     setHint('Qayta rasmga oling.');
   }
 
-  // Hodisalar
   captureBtn.addEventListener('click', takeShot);
   saveBtn.addEventListener('click', downloadBlob);
   shareBtn.addEventListener('click', shareBlob);
   retakeBtn.addEventListener('click', retake);
   closeX.addEventListener('click', retake);
 
-  // Fallback: fayldan tanlash
   fileInput.addEventListener('change', e=>{
     const f = e.target.files?.[0];
     if(!f) return;
@@ -270,14 +266,9 @@
     setHint('Fayldan surat tanlandi.');
   });
 
-  // Sahifa ochilganda avtomatik kamera yoqish
-  window.addEventListener('load', ensureCamera);           // <— YANGI
-  // Ilova fon/oldinga o‘tganda streamni tekshirib turish
-  document.addEventListener('visibilitychange', ()=>{      // <— YANGI
-    if (!document.hidden) ensureCamera();
-  });
+  window.addEventListener('load', ensureCamera);
+  document.addEventListener('visibilitychange', ()=>{ if (!document.hidden) ensureCamera(); });
 
-  // Chiqishda kamera to‘xtatish
   window.addEventListener('beforeunload', ()=>{
     try { stream?.getTracks().forEach(t=>t.stop()); } catch {}
     revokeURL();
